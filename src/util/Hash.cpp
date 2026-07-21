@@ -4,7 +4,7 @@
 最终输出的 sha256() 函数完成填充、分块处理和摘要拼接。
  */
 
-#include "Hash.h"
+#include "util/Hash.h"
 #include <cstring>
 #include <sstream>
 #include <iomanip>
