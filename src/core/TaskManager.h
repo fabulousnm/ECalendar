@@ -18,9 +18,9 @@ TaskManager
 
  主要功能：
  1. 用户管理：登录验证和注册（用户名唯一性检查）
-  2. 任务 CRUD：添加任务（含重名+同时间检测）、删除任务、按日期/月查询
+  2. 任务：添加任务（含重名+同时间检测）、删除任务、按日期/月查询
   3. 提醒查询：获取当前时间前后 1 分钟内需要提醒的任务
-  4. 数据持久化：加载和保存到 JSON 文件
+  4. 数据储存本地：加载和保存到 JSON 文件
 */
 
 class TaskManager {
@@ -43,7 +43,9 @@ public:
     int addTask(const Task& task);
    //删除任务
     bool deleteTask(int id);
-    
+    //延后更新时间
+    bool updateTaskRemindTime(int id, const std::string& newTime);
+
      //getTasksByDate - 按日期获取任务列表
      
 
