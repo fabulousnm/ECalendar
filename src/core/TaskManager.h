@@ -61,7 +61,7 @@ public:
      */
     std::vector<Task> getUpcomingReminders() const;
 
-    // 时间比较工具函数
+    // 时间比较工具函数,如果提醒时间晚于开始时间不行
 
     static bool isRemindTimeAfterStart(const std::string& remindTime,
                                        const std::string& startTime);
@@ -76,13 +76,13 @@ userFile 用户数据文件路径
 */
     void loadFromFile(const std::string& taskFile, const std::string& userFile);
 
-    // 按用户名加载
+    // 按用户名加载，实现不同用户不同任务隔离
     void loadFromUserFile(const std::string& baseDir, const std::string& userFile,
                           const std::string& username);
 
     void saveToFile(const std::string& taskFile, const std::string& userFile);
 
-    // 按用户名保存
+    // 按用户名保存，隔离
     void saveToUserFile(const std::string& baseDir, const std::string& userFile);
 
     // 访问已经储存的数据 
