@@ -20,12 +20,7 @@ static std::string jsonEscape(const std::string& s) {
     return out;
 }
 
-/*
-writeTask - 将 Task 对象写入输出流
-os     输出流
-t      待写入的任务
-indent 缩进空格数
- */
+//writeTask -序列化单个任务 
 static void writeTask(std::ostream& os, const Task& t, int indent) {
     std::string pad(indent, ' ');
     os << pad << "{\n";
@@ -37,12 +32,7 @@ static void writeTask(std::ostream& os, const Task& t, int indent) {
     os << pad << "  \"remindTime\":\"" << jsonEscape(t.remindTime) << "\"\n";
     os << pad << "}";
 }
-/*
-writeUser - 将 User 对象写入输出流
-os     输出流
-u      待写入的用户
-indent 缩进空格数
- */
+//writeUser -序列化单个用户 
 static void writeUser(std::ostream& os, const User& u, int indent) {
     std::string pad(indent, ' ');
     os << pad << "{\n";
@@ -65,7 +55,7 @@ bool Storage::saveTasks(const std::string& filename, const std::vector<Task>& ta
     ofs << "  ]\n}\n";
     return true;
 }
-
+//覆盖式写入
 bool Storage::saveUsers(const std::string& filename, const std::vector<User>& users) {
     std::ofstream ofs(filename);
     if (!ofs) return false;
@@ -103,10 +93,7 @@ bool Storage::saveAll(const std::string& filename,
 }
 
 
-/* trim - 工具函数，用于去除字符串首尾的空白字符
- s 输入字符串
-去除首尾空白后的子串
- */
+//trim - 工具函数，用于去除字符串首尾的空白字符
 static std::string trim(const std::string& s) {
     size_t start = s.find_first_not_of(" \t\r\n");
     if (start == std::string::npos) return "";
@@ -126,7 +113,7 @@ static size_t skipWS(const std::string& s, size_t pos) {
     return pos;
 }
 
-
+//反序列化操作函数
 //parseJsonString - 解析 JSON 字符串值
  
 static std::pair<std::string, size_t> parseJsonString(const std::string& s, size_t pos) {
@@ -168,7 +155,7 @@ static std::pair<int, size_t> parseJsonInt(const std::string& s, size_t pos) {
     return {val, pos};
 }
 
- //工具函数：skipJsonValue - 跳过整个 JSON 值（对象、数组、字符串、数值）
+ //工具函数：skipJsonValue - 当key不匹配时跳过整个 JSON 值，继续查找下一个key
 
 static size_t skipJsonValue(const std::string& s, size_t pos) {
     pos = skipWS(s, pos);
@@ -237,7 +224,7 @@ static size_t findKey(const std::string& s, size_t pos, const std::string& key) 
     }
 }
 
-// 类型别名：一个 JSON 对象的键值对集合
+// 一个 JSON 对象的键值对集合
 using FieldMap = std::vector<std::pair<std::string, std::string>>;
 
 /*
