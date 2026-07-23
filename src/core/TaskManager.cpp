@@ -10,7 +10,7 @@
 #include <sstream>
 #include <cstdio>
 
-// 时间比较
+// 时间比较函数，逐级比较
 
 static std::vector<int> parseDateTime(const std::string& dt) {
     std::vector<int> parts;
@@ -38,16 +38,16 @@ bool TaskManager::isRemindTimeAfterStart(const std::string& remindTime,
         return remindTime > startTime;
     }
     for (int i = 0; i < 5; ++i) {
-        if (r[i] > s[i]) return true;   // 提醒时间偏大 → 晚于
-        if (r[i] < s[i]) return false;  // 提醒时间偏小 → 早于
+        if (r[i] > s[i]) return true;   
+        if (r[i] < s[i]) return false;  
     }
-    return false;  // 全部相等 → 不晚于
+    return false;  
 }
 
 
 // 用户管理
 
-
+//登录
 bool TaskManager::login(const std::string& username, const std::string& password) {
     std::lock_guard<std::mutex> lock(mtx);
     for (const auto& u : users) {
@@ -57,7 +57,7 @@ bool TaskManager::login(const std::string& username, const std::string& password
     }
     return false;
 }
-
+//注册
 bool TaskManager::registerUser(const std::string& username, const std::string& password) {
     std::lock_guard<std::mutex> lock(mtx);
     // 检查用户名是否已被占用
@@ -72,7 +72,7 @@ bool TaskManager::registerUser(const std::string& username, const std::string& p
 
 
 // 任务管理
-
+//增
 int TaskManager::addTask(const Task& task) {
     std::lock_guard<std::mutex> lock(mtx);
     // 检查唯一性：不允许同名 、同开始时间的任务
@@ -93,7 +93,7 @@ int TaskManager::addTask(const Task& task) {
     tasks.push_back(t);
     return t.id;
 }
-
+//删
 bool TaskManager::deleteTask(int id) {
     std::lock_guard<std::mutex> lock(mtx);
     auto it = std::find_if(tasks.begin(), tasks.end(),
@@ -102,7 +102,7 @@ bool TaskManager::deleteTask(int id) {
     tasks.erase(it);
     return true;
 }
-
+//更新题型时间（五分钟之后再提醒我）
 bool TaskManager::updateTaskRemindTime(int id, const std::string& newTime) {
     std::lock_guard<std::mutex> lock(mtx);
     for (auto& t : tasks) {
@@ -113,7 +113,7 @@ bool TaskManager::updateTaskRemindTime(int id, const std::string& newTime) {
     }
     return false;
 }
-
+//读（按照天）
 std::vector<Task> TaskManager::getTasksByDate(const std::string& date) const {
     std::lock_guard<std::mutex> lock(mtx);
     std::vector<Task> result;
@@ -127,7 +127,7 @@ std::vector<Task> TaskManager::getTasksByDate(const std::string& date) const {
     std::sort(result.begin(), result.end());
     return result;
 }
-
+//读（按照月）
 std::vector<Task> TaskManager::getTasksByMonth(const std::string& yearMonth) const {
     std::lock_guard<std::mutex> lock(mtx);
     std::vector<Task> result;
@@ -139,7 +139,7 @@ std::vector<Task> TaskManager::getTasksByMonth(const std::string& yearMonth) con
     std::sort(result.begin(), result.end());
     return result;
 }
-
+//查询即将到来的提醒时间
 std::vector<Task> TaskManager::getUpcomingReminders() const {
     std::lock_guard<std::mutex> lock(mtx);
     // 获取当前系统时间
@@ -178,7 +178,7 @@ std::vector<Task> TaskManager::getUpcomingReminders() const {
 }
 
 //数据本地储存
-
+//加载
 void TaskManager::loadFromFile(const std::string& taskFile, const std::string& userFile) {
     std::lock_guard<std::mutex> lock(mtx);//锁防止出错
     // 从 JSON 文件中加载数据
