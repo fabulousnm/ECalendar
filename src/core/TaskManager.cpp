@@ -10,12 +10,13 @@
 #include <sstream>
 #include <cstdio>
 
-// 时间比较函数，逐级比较
+// 将字符串时间解析成向量
 
 static std::vector<int> parseDateTime(const std::string& dt) {
     std::vector<int> parts;
     if (dt.size() < 16) return parts;  // "YYYY-MM-DD HH:MM" = 16 字符
     int y, m, d, h, min;
+    //格式化提取数据
     if (std::sscanf(dt.c_str(), "%d-%d-%d %d:%d", &y, &m, &d, &h, &min) == 5) {
         parts.push_back(y);
         parts.push_back(m);
@@ -27,7 +28,7 @@ static std::vector<int> parseDateTime(const std::string& dt) {
 }
 
 
- //isRemindTimeAfterStart - 比较提醒时间是否晚于开始时间
+ //isRemindTimeAfterStart - 逐级比较，比较提醒时间是否晚于开始时间
 
 bool TaskManager::isRemindTimeAfterStart(const std::string& remindTime,
                                           const std::string& startTime) {
@@ -35,7 +36,32 @@ bool TaskManager::isRemindTimeAfterStart(const std::string& remindTime,
     auto s = parseDateTime(startTime);
     if (r.size() != 5 || s.size() != 5) {
         // 解析失败
-        return remindTime > startTime;
+        return remindTime > startTime;bool Storage::saveTasks(const std::string& filename, const std::vector<Task>& tasks) {
+    std::ofstream ofs(filename);
+    if (!ofs) return false;
+    ofs << "{\n  \"tasks\": [\n";
+    for (size_t i = 0; i < tasks.size(); i++) {
+        writeTask(ofs, tasks[i], 4);
+        if (i + 1 < tasks.size()) ofs << ",";
+        ofs << "\n";
+    }
+    ofs << "  ]\n}\n";
+    return true;
+}
+
+bool Storage::saveUsers(const std::string& filename, const std::vector<User>& users) {
+    std::ofstream ofs(filename);
+    if (!ofs) return false;
+    ofs << "{\n  \"users\": [\n";
+    for (size_t i = 0; i < users.size(); i++) {
+        writeUser(ofs, users[i], 4);
+        if (i + 1 < users.size()) ofs << ",";
+        ofs << "\n";
+    }
+    ofs << "  ]\n}\n";
+    return true;
+}
+
     }
     for (int i = 0; i < 5; ++i) {
         if (r[i] > s[i]) return true;   
@@ -65,7 +91,7 @@ bool TaskManager::registerUser(const std::string& username, const std::string& p
         if (u.username == username)
             return false; // 用户名已存在，注册失败
     }
-    // 创建新用户
+    // 创建新用户，使用了vector的emplace_back函数，自动构造user对象
     users.emplace_back(username, password);
     return true;
 }
@@ -89,13 +115,14 @@ int TaskManager::addTask(const Task& task) {
     }
     // 分配新 ID 并加入列表
     Task t = task;
-    t.id = nextId++;
-    tasks.push_back(t);
+    t.id = nextId++;//储存的是唯一id
+    tasks.push_back(t);//t已构造好，直接加入vector便可不需要构造
     return t.id;
 }
 //删
 bool TaskManager::deleteTask(int id) {
     std::lock_guard<std::mutex> lock(mtx);
+    //使用find_if查找第一个匹配的tasks
     auto it = std::find_if(tasks.begin(), tasks.end(),
                            [id](const Task& t) { return t.id == id; });
     if (it == tasks.end()) return false; // 未找到
@@ -119,7 +146,7 @@ std::vector<Task> TaskManager::getTasksByDate(const std::string& date) const {
     std::vector<Task> result;
     for (const auto& t : tasks) {
         // date 格式 "YYYY-MM-DD"，startTime 格式 "YYYY-MM-DD HH:MM"
-        // 比较前 10 个字符判断是否同一天
+        // 比较前 10 个字符判断是否同一天,加入向量
         if (t.startTime.size() >= 10 && t.startTime.substr(0, 10) == date)
             result.push_back(t);
     }
@@ -143,9 +170,9 @@ std::vector<Task> TaskManager::getTasksByMonth(const std::string& yearMonth) con
 std::vector<Task> TaskManager::getUpcomingReminders() const {
     std::lock_guard<std::mutex> lock(mtx);
     // 获取当前系统时间
-    auto now = std::chrono::system_clock::now();
-    auto now_c = std::chrono::system_clock::to_time_t(now);
-    std::tm* tm_now = std::localtime(&now_c);
+    auto now = std::chrono::system_clock::now();//时间戳
+    auto now_c = std::chrono::system_clock::to_time_t(now);//秒级
+    std::tm* tm_now = std::localtime(&now_c);//转换为可读时间
 
     // 当前时间的格式化字符串
     char nowBuf[20];
@@ -153,7 +180,7 @@ std::vector<Task> TaskManager::getUpcomingReminders() const {
     std::string nowStr(nowBuf);
 
     // 计算前后 1 分钟的时间点，用于划定提醒触发窗口
-    time_t now_t = std::mktime(tm_now);
+    time_t now_t = std::mktime(tm_now);//转时间戳
     time_t oneMinAgo_t = now_t - 60;   // 1 分钟前
     time_t oneMinLater_t = now_t + 60; // 1 分钟后
 
@@ -164,8 +191,8 @@ std::vector<Task> TaskManager::getUpcomingReminders() const {
     std::strftime(agoBuf, sizeof(agoBuf), "%Y-%m-%d %H:%M", tm_ago);
     std::strftime(laterBuf, sizeof(laterBuf), "%Y-%m-%d %H:%M", tm_later);
 
-    std::string agoStr(agoBuf);   // 窗口起始
-    std::string laterStr(laterBuf); // 窗口结束
+    std::string agoStr(agoBuf);   // 窗口起始字符串
+    std::string laterStr(laterBuf); // 窗口结束字符串
 
     // 筛选提醒时间在范围内的任务
     std::vector<Task> result;
@@ -178,7 +205,7 @@ std::vector<Task> TaskManager::getUpcomingReminders() const {
 }
 
 //数据本地储存
-//加载
+//加载某一个用户的任务文件
 void TaskManager::loadFromFile(const std::string& taskFile, const std::string& userFile) {
     std::lock_guard<std::mutex> lock(mtx);//锁防止出错
     // 从 JSON 文件中加载数据
@@ -200,7 +227,7 @@ void TaskManager::saveToFile(const std::string& taskFile, const std::string& use
 
 
 
-//储存用户以及任务的函数
+//加载用户以及任务的函数
 void TaskManager::loadFromUserFile(const std::string& baseDir,
                                      const std::string& userFile,
                                      const std::string& username) {
@@ -214,7 +241,7 @@ void TaskManager::saveToUserFile(const std::string& baseDir,
     if (currentUser_.empty()) return;
     std::lock_guard<std::mutex> lock(mtx);
     std::string taskFile = baseDir + "/tasks_" + currentUser_ + ".json";
-    Storage::saveTasks(taskFile, tasks);
-    Storage::saveUsers(userFile, users);
+    Storage::saveTasks(taskFile, tasks);//覆盖式写入任务
+    Storage::saveUsers(userFile, users);//每次都覆盖式写入，比较方便
 }
 
