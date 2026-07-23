@@ -12,7 +12,7 @@
 #include "core/Task.h"
 #include "core/User.h"
 
-Storage {
+class Storage {
 public:
    //储存任务
     static bool saveTasks(const std::string& filename, const std::vector<Task>& tasks);
