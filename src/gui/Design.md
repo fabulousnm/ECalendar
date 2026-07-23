@@ -33,3 +33,5 @@
 | MainWindow    |  `src/gui/MainWindow.h/.cpp` | 大小可变 |
 | TaskDialog    | `src/gui/TaskDialog.h/.cpp`   | 大小固定 |
 | ReminderPopup | `src/gui/ReminderPopup.h/.cpp` | 大小固定 |
+
+配色遵循简洁特点，白蓝色最佳，原则是交互逻辑简单容易上手，不需要说明书也可直接使用
