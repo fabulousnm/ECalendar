@@ -67,14 +67,22 @@ TaskDialog::TaskDialog(bool editMode, const Task& task, QWidget* parent)
     if (catIndex >= 0) {
         m_categoryCombo->setCurrentIndex(catIndex);
     }
-
-    // 设置提醒时间
+// 设置提醒时间
     if (!task.remindTime.empty()) {
         QDateTime remindDt = QDateTime::fromString(
             QString::fromStdString(task.remindTime), "yyyy-MM-dd HH:mm");
         if (remindDt.isValid()) {
             m_remindTimeEdit->setDateTime(remindDt);
+            // 提醒时间已由 AI 解析指定，直接使用
+        } else {
+            // 格式解析失败，退回到开始时间前15分钟
+            m_remindTimeEdit->setDateTime(
+                m_startTimeEdit->dateTime().addSecs(-900));
         }
+    } else {
+        // 用户没有指定提醒时间 → 默认设为开始时间前 15 分钟
+        m_remindTimeEdit->setDateTime(
+            m_startTimeEdit->dateTime().addSecs(-900));
     }
 }
 

@@ -24,6 +24,7 @@
 #include <sstream>
 #include <iostream>
 #include <regex>
+#include <fstream>
 
 // ================================================================
 // HAS_CURL 编译标志
@@ -41,7 +42,7 @@
 // DeepSeek API 常量
 // ================================================================
 static const char* DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
-static const char* DEEPSEEK_MODEL = "deepseek-chat";
+static const char* DEEPSEEK_MODEL = "deepseek-v4-flash";
 
 // ================================================================
 // libcurl 写回调
@@ -85,13 +86,25 @@ ParsedTask NLProcessor::parseWithDeepSeek(const std::string& text) {
     ParsedTask result;
     result.valid = false;
 
+    // 第一步：检查 API Key（从环境变量读取）
     const char* apiKey = std::getenv("DEEPSEEK_API_KEY");
     if (!apiKey || strlen(apiKey) == 0) {
+        std::cerr << "[DeepSeek] 失败: DEEPSEEK_API_KEY 环境变量未设置" << std::endl;
+        std::cerr << "[DeepSeek] 请检查 ECalendar/.env 文件是否存在，内容是否为 DEEPSEEK_API_KEY=sk-..." << std::endl;
         return result;
     }
+    std::cerr << "[DeepSeek] API Key 已找到 (前16位: " << std::string(apiKey, 16) << "...)" << std::endl;
 
-    // 通过系统 curl 命令调用 DeepSeek API（比 libcurl 更可靠）
-    // 构建请求体 JSON（转义用户文本中的特殊字符）
+    // 第二步：检查 curl 是否可用
+    {
+        int curlCheck = std::system("which curl > /dev/null 2>&1");
+        if (curlCheck != 0) {
+            std::cerr << "[DeepSeek] 失败: curl 未安装。运行: sudo apt install curl" << std::endl;
+            return result;
+        }
+    }
+    std::cerr << "[DeepSeek] curl 可用" << std::endl;
+
     std::string escapedText = text;
     auto replaceAll = [](std::string& s, const std::string& from, const std::string& to) {
         size_t pos = 0;
@@ -105,6 +118,7 @@ ParsedTask NLProcessor::parseWithDeepSeek(const std::string& text) {
     replaceAll(escapedText, "\n", "\\n");
     replaceAll(escapedText, "\r", "\\r");
     replaceAll(escapedText, "\t", "\\t");
+    replaceAll(escapedText, "'", "'\\''");
 
     // 获取今天的日期
     time_t now = time(nullptr);
@@ -131,16 +145,32 @@ ParsedTask NLProcessor::parseWithDeepSeek(const std::string& text) {
     postData += "\"temperature\":0.1";
     postData += "}";
 
-    // 构建 curl 命令
+    // 第三步：把 JSON 写入临时文件
+    std::string tmpFile = "/tmp/ecalender_post.json";
+    {
+        std::ofstream ofs(tmpFile);
+        if (!ofs.is_open()) {
+            std::cerr << "[DeepSeek] 失败: 无法写入临时文件 " << tmpFile << std::endl;
+            return result;
+        }
+        ofs << postData;
+    }
+    std::cerr << "[DeepSeek] 请求体已写入 " << tmpFile << " (" << postData.size() << " bytes)" << std::endl;
+
+    // 第四步：执行 curl 请求
     std::string cmd = "curl -s -w \\n%{http_code} ";
     cmd += "-H 'Content-Type: application/json' ";
     cmd += "-H 'Authorization: Bearer " + std::string(apiKey) + "' ";
-    cmd += "-d '" + postData + "' ";
-    cmd += "'" + std::string(DEEPSEEK_API_URL) + "' 2>/dev/null";
+    cmd += "-d '@" + tmpFile + "' ";
+    cmd += "'" + std::string(DEEPSEEK_API_URL) + "'";
 
-    // 执行 curl 并读取输出
+    std::cerr << "[DeepSeek] 执行命令..." << std::endl;
     FILE* fp = popen(cmd.c_str(), "r");
-    if (!fp) return result;
+    if (!fp) {
+        std::cerr << "[DeepSeek] 失败: popen 无法执行 curl" << std::endl;
+        std::remove(tmpFile.c_str());
+        return result;
+    }
 
     std::string response;
     char buf[4096];
@@ -149,9 +179,23 @@ ParsedTask NLProcessor::parseWithDeepSeek(const std::string& text) {
         response.append(buf, n);
     }
     int exitCode = pclose(fp);
-    if (exitCode != 0 || response.empty()) return result;
+    std::remove(tmpFile.c_str());
 
-    // 提取 JSON content（跳过 HTTP 状态码）
+    std::cerr << "[DeepSeek] curl 退出码: " << exitCode << std::endl;
+    std::cerr << "[DeepSeek] 原始响应 (";
+    std::cerr << response.size() << " 字节):" << std::endl;
+    std::cerr << response << std::endl;
+
+    if (exitCode != 0) {
+        std::cerr << "[DeepSeek] 失败: curl 返回非零退出码" << std::endl;
+        return result;
+    }
+    if (response.empty()) {
+        std::cerr << "[DeepSeek] 失败: 响应为空" << std::endl;
+        return result;
+    }
+
+    // 第五步：提取 JSON（跳过 HTTP 状态码）
     std::string jsonContent;
     size_t braceStart = response.find('{');
     if (braceStart != std::string::npos) {
@@ -160,17 +204,23 @@ ParsedTask NLProcessor::parseWithDeepSeek(const std::string& text) {
             jsonContent = response.substr(braceStart, braceEnd - braceStart + 1);
         }
     }
-    if (jsonContent.empty()) return result;
+    if (jsonContent.empty()) {
+        std::cerr << "[DeepSeek] 失败: 未能在响应中找到 JSON 花括号" << std::endl;
+        return result;
+    }
+    std::cerr << "[DeepSeek] 提取到的 JSON (" << jsonContent.size() << " bytes):" << std::endl;
+    std::cerr << jsonContent << std::endl;
 
-    // 从 DeepSeek 响应中提取 choices[0].message.content
-    // 响应格式：{"choices":[{"message":{"content":"{...}"}}]}
+    // 第六步：从响应中提取 choices[0].message.content
     std::string contentMarker = "\"content\":\"";
     size_t contentStart = jsonContent.find(contentMarker);
     if (contentStart == std::string::npos) {
-        // 尝试带空格的格式
         contentMarker = "\"content\" : \"";
         contentStart = jsonContent.find(contentMarker);
-        if (contentStart == std::string::npos) return result;
+        if (contentStart == std::string::npos) {
+            std::cerr << "[DeepSeek] 失败: 未找到 content 字段" << std::endl;
+            return result;
+        }
     }
     contentStart += contentMarker.size();
 
@@ -193,10 +243,23 @@ ParsedTask NLProcessor::parseWithDeepSeek(const std::string& text) {
             rawContent += c;
         }
     }
-    if (rawContent.empty()) return result;
+    if (rawContent.empty()) {
+        std::cerr << "[DeepSeek] 失败: content 字段内容为空" << std::endl;
+        return result;
+    }
+    std::cerr << "[DeepSeek] 提取到的 content:" << std::endl;
+    std::cerr << rawContent << std::endl;
 
-    // 解析 content 中的 JSON
+    // 第七步：解析 content 中的 JSON 为结构化任务
     result = parseJsonContent(rawContent);
+    if (!result.valid) {
+        std::cerr << "[DeepSeek] 失败: parseJsonContent 解析失败" << std::endl;
+        std::cerr << "[DeepSeek] name='" << result.name << "' startTime='" << result.startTime << "'" << std::endl;
+    } else {
+        std::cerr << "[DeepSeek] 解析成功: " << result.name << " @ " << result.startTime;
+        if (!result.remindTime.empty()) std::cerr << " (提醒: " << result.remindTime << ")";
+        std::cerr << std::endl;
+    }
     return result;
 }
 

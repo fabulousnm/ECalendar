@@ -127,10 +127,22 @@ int main(int argc, char *argv[]) {
 
     // ---- 加载 .env 环境变量 ----
     {
-        const char* candidates[] = {".env", "../.env", "../../.env"};
-        for (auto* path : candidates) {
-            std::ifstream file(path);
+        // 收集更多可能路径：当前目录、上级、可执行文件同级、项目根目录
+        QStringList envCandidates;
+        envCandidates << ".env"
+                      << "../.env"
+                      << "../../.env"
+                      << QApplication::applicationDirPath() + "/.env"
+                      << QDir::currentPath() + "/.env";
+        // 也尝试项目根目录 ECalendar/.env（构建目录的父目录）
+        QDir curDir(QDir::currentPath());
+        curDir.cdUp();
+        envCandidates << curDir.absolutePath() + "/.env";
+
+        for (const QString& envPath : envCandidates) {
+            std::ifstream file(envPath.toStdString());
             if (!file) continue;
+            qDebug() << "加载 .env:" << envPath;
             std::string line;
             while (std::getline(file, line)) {
                 if (line.empty() || line[0] == '#') continue;
@@ -147,6 +159,9 @@ int main(int argc, char *argv[]) {
                 trim(key); trim(value);
                 if (!key.empty() && !value.empty()) {
                     setenv(key.c_str(), value.c_str(), 0);
+                    if (key == "DEEPSEEK_API_KEY") {
+                        qDebug() << "DEEPSEEK_API_KEY 已加载";
+                    }
                 }
             }
             break;
