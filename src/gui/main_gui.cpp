@@ -15,8 +15,6 @@
 #include "gui/LoginDialog.h"
 #include "gui/MainWindow.h"
 #include "core/TaskManager.h"
-#include "audio/SpeechRecognizer.h"
-
 
 
 /*

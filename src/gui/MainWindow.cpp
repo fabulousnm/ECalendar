@@ -57,8 +57,6 @@ MainWindow::MainWindow(TaskManager* manager, const QString& username, QWidget* p
         m_username.toStdString()
     );
 
-    // 初始化提醒
-    Reminder::init();
 
     setupUI();
 
