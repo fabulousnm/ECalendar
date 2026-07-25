@@ -15,7 +15,17 @@
 #include "gui/LoginDialog.h"
 #include "gui/MainWindow.h"
 #include "core/TaskManager.h"
-
+/**
+ * signalHandler - 信号处理函数
+ *
+ * 在收到 SIGINT 或 SIGTERM 时，先释放 Vosk 共享模型（~2GB），
+ * 然后恢复默认信号处理并重新触发信号，让进程正常终止。
+ */
+static void signalHandler(int sig) {
+    SpeechRecognizer::unloadModel();
+    std::signal(sig, SIG_DFL);
+    std::raise(sig);
+}
 
 /*
   main - Qt GUI 应用程序入口
@@ -64,7 +74,9 @@ int main(int argc, char *argv[]) {
         qputenv("GTK_IM_MODULE", QByteArray("ibus"));
         qputenv("XMODIFIERS", QByteArray("@im=ibus"));
     }
-
+     // 注册信号处理器：退出时释放 Vosk 模型内存
+    std::signal(SIGINT,  signalHandler);
+    std::signal(SIGTERM, signalHandler);
 
     QApplication app(argc, argv);
     app.setApplicationName("Ecalender");
@@ -144,8 +156,13 @@ int main(int argc, char *argv[]) {
         MainWindow mainWin(&manager, loginDlg.getUsername());
         mainWin.show();
         int ret = app.exec();
+	// 用户关闭主窗口后，释放 Vosk 共享模型
+        SpeechRecognizer::unloadModel();
+
         return ret;
     }
+     // 释放 Vosk 共享模型（~2GB），防止内存泄漏
+    SpeechRecognizer::unloadModel();
 
 
     // 用户取消登录，退出程序

@@ -22,7 +22,11 @@
 #include <vector>
 #include <fstream>
 #include <algorithm>
-
+//录音相关功能库
+#include "audio/Reminder.h"
+#include "audio/AudioRecorder.h"
+#include "audio/SpeechRecognizer.h"
+#include "util/NLProcessor.h"
 
 MainWindow::MainWindow(TaskManager* manager, const QString& username, QWidget* parent)
     : QMainWindow(parent)
@@ -68,7 +72,18 @@ MainWindow::MainWindow(TaskManager* manager, const QString& username, QWidget* p
     // 初始加载表格
     refreshTable();
     updateStatusBar();
-
+    // 后台静默预加载语音模型（异步，不阻塞 UI，不输出日志）
+    // 首次录音时模型已加载完成，用户零等待
+    std::thread([]() {
+        int saved_stderr = dup(STDERR_FILENO);
+        FILE* null = freopen("/dev/null", "w", stderr);
+        SpeechRecognizer preloader;
+        preloader.loadModel("model/vosk-model-cn-0.22");
+        fflush(stderr);
+        dup2(saved_stderr, STDERR_FILENO);
+        ::close(saved_stderr);
+    }).detach();
+}
 // 析构函数
 
 MainWindow::~MainWindow() {
@@ -125,7 +140,26 @@ void MainWindow::setupUI() {
     m_addTaskBtn->setObjectName("primaryBtn");
     m_addTaskBtn->setMinimumHeight(32);
     m_addTaskBtn->setCursor(Qt::PointingHandCursor);
+    // 🤖 AI 自然语言输入框
+    m_nlInput = new QLineEdit(this);
+    m_nlInput->setPlaceholderText("e.g. 明天下午三点去图书馆学习");
+    m_nlInput->setMinimumHeight(32);
+    m_nlInput->setMinimumWidth(260);
+    m_nlInput->setClearButtonEnabled(true);
 
+    // 🤖 AI 添加按钮
+    m_aiAddBtn = new QPushButton("🤖 AI 添加", this);
+    m_aiAddBtn->setObjectName("primaryBtn");
+    m_aiAddBtn->setMinimumHeight(32);
+    m_aiAddBtn->setCursor(Qt::PointingHandCursor);
+    m_aiAddBtn->setToolTip("用自然语言快速添加任务");
+
+    // 🎤 录音按钮
+    m_recordBtn = new QPushButton("🎤 录音", this);
+    m_recordBtn->setObjectName("recordBtn");
+    m_recordBtn->setMinimumHeight(32);
+    m_recordBtn->setCursor(Qt::PointingHandCursor);
+    m_recordBtn->setToolTip("点击开始/停止录音");
     // 刷新按钮
     m_refreshBtn = new QPushButton("⟳", this);
     m_refreshBtn->setFixedSize(32, 32);
@@ -455,6 +489,48 @@ void MainWindow::onAddTaskClicked() {
         }
     }
 }
+
+void MainWindow::onAiAddClicked() {
+    QString input = m_nlInput->text().trimmed();
+    if (input.isEmpty()) {
+        m_nlInput->setFocus();
+        return;
+    }
+
+    // 显示解析中状态
+    if (m_nextRemindLabel)
+        m_nextRemindLabel->setText("🤖 AI 解析中...");
+
+    // 使用 NLProcessor 解析（可能在后台线程执行，但这里简单起见直接调）
+    // 注：parse() 内部会先尝试 DeepSeek API（网络调用可能慢），然后回退到正
+则
+    std::string text = input.toStdString();
+    ParsedTask parsed = NLProcessor::parse(text);
+
+    if (!parsed.valid) {
+        if (m_nextRemindLabel)
+            m_nextRemindLabel->setText(
+                QString::fromStdString("❌ 无法解析: " + text));
+        return;
+    }
+
+    // 显示解析成功
+    if (m_nextRemindLabel)
+        m_nextRemindLabel->setText(
+            QString("✅ 解析成功: %1").arg(QString::fromStdString(parsed.name)));
+
+    // 清空输入框
+    m_nlInput->clear();
+
+    // 打开预填 TaskDialog（包含提醒时间）
+    confirmAndAddTask(
+        QString::fromStdString(parsed.name),
+        QString::fromStdString(parsed.startTime),
+        parsed.priority,
+        QString::fromStdString(parsed.category),
+        QString::fromStdString(parsed.remindTime)
+    );
+}
 // 刷新按钮点击
 void MainWindow::onRefreshClicked() {
     // 重新从文件加载数据（按用户隔离）
@@ -584,7 +660,17 @@ void MainWindow::onCheckReminders() {
         while (m_recentlyTriggered.size() > 100) {
             m_recentlyTriggered.removeFirst();
         }
+         // 在独立线程中播放提醒音效，弹窗期间持续播放
+        std::thread([]() {
+            Reminder::playReminderSound();
+        }).detach();
 
+        // 显示提醒弹窗（模态，会阻塞直到用户选择）
+        ReminderPopup popup(task, this);
+        popup.exec();
+
+        // 用户选择后关闭音频
+        Reminder::killAudio();
         // 处理用户选择
         if (popup.action() == ReminderPopup::SNOOZE) {
             // 计算 5 分钟后的时间
@@ -608,6 +694,317 @@ void MainWindow::onCheckReminders() {
             }
         }
    }
+}
+
+//录音相关函数
+void MainWindow::onRecordClicked() {
+    switch (m_recordState) {
+        case Idle:
+            startRecording();
+            break;
+        case Loading:
+            // 加载中，忽略后续点击
+            break;
+        case Recording:
+            stopRecording();
+            break;
+    }
+}
+
+/**
+ * startRecording - 开始录音
+ *
+ * 1. 按钮变 ⏳ 准备中，不可点击
+ * 2. 后台加载模型
+ * 3. 加载完成后自动切换到录音状态
+ */
+void MainWindow::startRecording() {
+    m_recordState = Loading;
+    m_recordBtn->setText("⏳ 准备中");
+    m_recordBtn->setEnabled(false);
+    m_recordBtn->setStyleSheet(
+        "background-color: #F5A623; color: white; font-weight: bold;"
+        "border: none; border-radius: 4px; padding: 4px 12px;"
+    );
+
+    if (m_nextRemindLabel)
+        m_nextRemindLabel->setText("🎧 模型加载中...");
+
+    // 检查录音工具
+    checkRecordTool();
+
+    // 后台加载模型
+    loadModelInBackground();
+}
+
+/**
+ * checkRecordTool - 检查录音工具
+ */
+bool MainWindow::checkRecordTool() {
+    m_hasArecord = (std::system("which arecord 2>/dev/null > /dev/null") == 0);
+    bool hasParec = (std::system("which parec 2>/dev/null > /dev/null") == 0);
+    if (!m_hasArecord && !hasParec) {
+        QMetaObject::invokeMethod(this, [this]() {
+            if (m_nextRemindLabel)
+                m_nextRemindLabel->setText("❌ 未找到录音工具");
+            m_recordState = Idle;
+            m_recordBtn->setText("🎤 录音");
+            m_recordBtn->setEnabled(true);
+            m_recordBtn->setStyleSheet("");
+        }, Qt::QueuedConnection);
+        return false;
+    }
+    return true;
+}
+
+/*loadModelInBackground - 后台加载模型
+ 在独立线程加载 Vosk 模型（共享模型，首次 2-3 秒）。
+ 加载完成后回到主线程调用 onModelLoaded。
+ */
+void MainWindow::loadModelInBackground() {
+    std::thread([this]() {
+        SpeechRecognizer* recognizer = new SpeechRecognizer();
+        bool success = recognizer->loadModel("model/vosk-model-cn-0.22");
+
+        QMetaObject::invokeMethod(this, [this, recognizer, success]() {
+            if (success) {
+                // 存储 recognizer 指针，后续喂入线程使用
+                // 使用静态共享模型，所以每个 SpeechRecognizer 实例共享同一个模型
+                onModelLoaded(success);
+            } else {
+                if (m_nextRemindLabel)
+                    m_nextRemindLabel->setText("❌ 语音模型加载失败");
+                m_recordState = Idle;
+                m_recordBtn->setText("🎤 录音");
+                m_recordBtn->setEnabled(true);
+                m_recordBtn->setStyleSheet("");
+            }
+            delete recognizer;
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+/**
+ * onModelLoaded - 模型加载完成回调（主线程）
+ *
+ * 按钮切换为 🔴 录音中，启动录音进程和喂入线程。
+ */
+void MainWindow::onModelLoaded(bool success) {
+    if (!success) return;
+
+    m_recordState = Recording;
+    m_stopFeeding = false;
+    m_lastPartialText.clear();
+
+    m_recordBtn->setText("🔴 录音中");
+    m_recordBtn->setEnabled(true);
+    m_recordBtn->setStyleSheet(
+        "background-color: #E74C3C; color: white; font-weight: bold;"
+        "border: none; border-radius: 4px; padding: 4px 12px;"
+    );
+
+    // 清空输入框
+    m_nlInput->clear();
+
+    if (m_nextRemindLabel)
+        m_nextRemindLabel->setText("🎤 录音中... 点击 🔴 停止");
+
+    // 启动录音
+    doStartRecording();
+}
+
+/**
+ * doStartRecording - 启动录音进程
+ *
+ * 后台启动 arecord 录制音频到临时文件。
+ */
+void MainWindow::doStartRecording() {
+    m_tempWavPath = QDir::tempPath() + "/ecalender_speech.wav";
+
+    if (m_hasArecord) {
+        std::system(("arecord -r 16000 -f S16_LE -c 1 -d 60 \""
+            + m_tempWavPath.toStdString() + "\" 2>/dev/null &").c_str());
+    } else {
+        std::string rawPath = m_tempWavPath.toStdString() + ".raw";
+        std::system(("parec --channels=1 --rate=16000 --format=s16le --raw \""
+            + rawPath + "\" 2>/dev/null &").c_str());
+    }
+
+    // 启动喂入线程
+    startFeedThread();
+}
+
+/**
+ * startFeedThread - 启动音频喂入线程
+ *
+ * 每 100ms 读取录音文件增量数据，喂入 Vosk，获取实时识别结果。
+ * 通过 QMetaObject::invokeMethod 回到主线程更新 m_nlInput。
+ */
+void MainWindow::startFeedThread() {
+    m_feedThread = std::thread([this]() {
+        std::streampos lastPos = 0;
+        std::string wavPath = m_tempWavPath.toStdString();
+        std::string readPath = m_hasArecord ? wavPath : (wavPath + ".raw");
+
+        // 创建本线程专用的 SpeechRecognizer（复用共享模型）
+        SpeechRecognizer localRecognizer;
+        localRecognizer.loadModel("model/vosk-model-cn-0.22");
+        localRecognizer.resetRecognizer();
+
+        while (!m_stopFeeding) {
+            std::ifstream audioFile(readPath, std::ios::binary);
+            if (audioFile.is_open()) {
+                audioFile.seekg(0, std::ios::end);
+                std::streampos curPos = audioFile.tellg();
+
+                if (curPos > lastPos) {
+                    std::streampos readSize = curPos - lastPos;
+                    audioFile.seekg(lastPos);
+
+                    std::vector<char> newData((size_t)readSize);
+                    audioFile.read(newData.data(), readSize);
+
+                    // 喂入 Vosk
+                    int offset = 0;
+                    while (offset < (int)newData.size()) {
+                        int chunk = std::min(8000, (int)newData.size() - offset);
+                        localRecognizer.acceptWaveform(
+                            newData.data() + offset, chunk);
+                        offset += chunk;
+                    }
+
+                    lastPos = curPos;
+
+                    // 获取部分结果
+                    std::string partialJson = localRecognizer.getPartialResult();
+                    std::string partialText =
+                        localRecognizer.extractPartialText(partialJson);
+
+                    if (!partialText.empty() && partialText != m_lastPartialText) {
+                        m_lastPartialText = partialText;
+                        QString qtText = QString::fromStdString(partialText);
+
+                        // 回到主线程更新 UI
+                        QMetaObject::invokeMethod(this, [this, qtText]() {
+                            // 只在录音状态下更新
+                            if (m_recordState == Recording) {
+                                m_nlInput->setText(qtText);
+                            }
+                        }, Qt::QueuedConnection);
+                    }
+                }
+                audioFile.close();
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        // 获取最终结果
+        std::string finalJson = localRecognizer.getFinalResult();
+        std::string finalText = localRecognizer.getText(finalJson);
+
+        // 清洗空格
+        std::string cleaned;
+        for (size_t i = 0; i < finalText.size(); ) {
+            unsigned char c = static_cast<unsigned char>(finalText[i]);
+            if (c == ' ') { i++; continue; }
+            cleaned += finalText[i];
+            i++;
+        }
+        if (cleaned.empty()) cleaned = finalText;
+
+        // 回到主线程设置最终文本
+        QString qtFinalText = QString::fromStdString(cleaned);
+        QMetaObject::invokeMethod(this, [this, qtFinalText]() {
+            onRecordingFinished(qtFinalText);
+        }, Qt::QueuedConnection);
+    });
+}
+
+/**
+ * stopRecording - 停止录音
+ *
+ * 点击 🔴 录音中按钮时调用：
+ * 1. 停止录音进程
+ * 2. 停止喂入线程
+ * 3. 最终文本由 feedThread 自动回调 onRecordingFinished
+ */
+void MainWindow::stopRecording() {
+    // 停止录音进程
+    std::system("killall arecord 2>/dev/null");
+    std::system("killall parec 2>/dev/null");
+    std::system("killall rec 2>/dev/null");
+
+    if (m_nextRemindLabel)
+        m_nextRemindLabel->setText("🔄 识别最终结果...");
+
+    // 停止喂入线程（会触发 finalResult + onRecordingFinished）
+    stopFeedThread();
+}
+
+/**
+ * stopFeedThread - 停止喂入线程
+ */
+void MainWindow::stopFeedThread() {
+    if (m_feedThread.joinable()) {
+        m_stopFeeding = true;
+        m_feedThread.join();
+    }
+}
+
+/**
+ * updateRecordPartialText - 更新实时识别文本到 AI 输入框（主线程）
+ *
+ * 由 feedThread 通过 invokeMethod 在主线程调用。
+ *
+ * @param text 实时识别文本
+ */
+void MainWindow::updateRecordPartialText(const QString& text) {
+    if (m_recordState == Recording) {
+        m_nlInput->setText(text);
+    }
+}
+
+/**
+ * onRecordingFinished - 录音结束回调（主线程）
+ *
+ * 设置最终识别文本到 AI 输入框，恢复按钮待机状态。
+ * 用户可在文本框自由编辑后点击 🤖 AI 添加。
+ *
+ * @param text 最终识别文本
+ */
+void MainWindow::onRecordingFinished(const QString& text) {
+    m_recordState = Idle;
+    m_recordBtn->setText("🎤 录音");
+    m_recordBtn->setEnabled(true);
+    m_recordBtn->setStyleSheet("");
+
+    if (!text.isEmpty()) {
+        m_nlInput->setText(text);
+        if (m_nextRemindLabel)
+            m_nextRemindLabel->setText(
+                QString("📝 识别结果: %1").arg(text));
+    } else {
+        if (m_nextRemindLabel)
+            m_nextRemindLabel->setText("❌ 未识别到语音内容");
+    }
+
+    // 清理临时文件
+    std::string wavStr = m_tempWavPath.toStdString();
+    std::remove(wavStr.c_str());
+    std::remove((wavStr + ".raw").c_str());
+}
+
+/**
+ * processRecording - 处理录音结果（兼容旧接口，保留但不再被录音流程使用）
+ *
+ * 新流程：录音 → 流式识别 → 文本填入 m_nlInput → 用户点击 🤖 AI 添加 → onAiAddClicked()
+ *
+ * @param wavPath 临时录音 WAV 文件路径
+ */
+void MainWindow::processRecording(const QString& wavPath) {
+    // 新录音流程不再使用此方法
+    // 保留以便外部调用（如测试）
+    Q_UNUSED(wavPath);
 }
 
 
