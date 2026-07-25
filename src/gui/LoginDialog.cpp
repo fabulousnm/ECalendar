@@ -187,7 +187,8 @@ void LoginDialog::onRegisterClicked() {
         QString homeDir = QString::fromLocal8Bit(qgetenv("HOME"));
         if (homeDir.isEmpty()) homeDir = QDir::homePath();
         std::string userFile = homeDir.toStdString() + "/.ecalender/users.json";
-   
+        Storage::saveUsers(userFile, m_manager->getUsers());
+        // 注册成功后自动登录   
         m_username = QString::fromStdString(username);
         accept();
     } else {
