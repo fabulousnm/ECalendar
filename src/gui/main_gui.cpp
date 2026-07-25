@@ -81,7 +81,26 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("Ecalender");
     app.setApplicationVersion("0.1");
-
+    // ---- 设置中文字体 ----
+    // 优先使用 SimSun（宋体），如果不可用则用 Noto Sans CJK SC
+    QFont appFont;
+    QStringList chineseFonts = {"SimSun", "Noto Sans CJK SC", "Noto Sans SC",
+                                "Microsoft YaHei", "WenQuanYi Micro Hei",
+                                "AR PL UMing CN", "AR PL UKai CN"};
+    for (const QString& fontName : chineseFonts) {
+        QFont testFont(fontName, 10);
+        QFontDatabase fontDb;
+        if (fontDb.hasFamily(fontName)) {
+            appFont = testFont;
+            qDebug() << "使用字体:" << fontName;
+            break;
+        }
+    }
+    if (appFont.family().isEmpty()) {
+        appFont = QFont("Noto Sans CJK SC", 10);
+        qDebug() << "使用默认字体";
+    }
+    app.setFont(appFont);
 
     // ---- 加载QSS样式表 ----
     // 优先搜索可执行文件同级目录，再搜索当前工作目录

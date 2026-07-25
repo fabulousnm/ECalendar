@@ -9,6 +9,7 @@
 
 /*  全局基础  */
 QWidget {
+    font-family: "SimSun", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
     font-size: 10pt;
     color: #333333; /*深灰色*/
 }
