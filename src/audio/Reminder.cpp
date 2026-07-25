@@ -56,12 +56,15 @@ static void generateMinimalWav(const std::string& path) {
 
 /**
  * wavPath - 查找 remind.wav 的实际路径
- * 候选路径：assets/remind.wav */
+ * 候选路径：assets/remind.wav → ../assets/remind.wav → ../../assets/remind.wav
+ */
 static std::string wavPath() {
+    // 先找用户自己的 remind.wav（从运行目录的上级开始搜索）
+    // 再回退到当前目录下的生成文件
     static const char* candidates[] = {
-        "assets/remind.wav",
-        "../assets/remind.wav",
-        "../../assets/remind.wav",
+        "../assets/remind.wav",     // build/ → ECalendar/assets/remind.wav
+        "../../assets/remind.wav",   // 再上一级
+        "assets/remind.wav",        // 当前目录（可能已被 generateMinimalWav 生成）
     };
     for (auto* p : candidates) {
         std::ifstream test(p);

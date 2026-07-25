@@ -62,6 +62,9 @@ MainWindow::MainWindow(TaskManager* manager, const QString& username, QWidget* p
     );
 
 
+    // 初始化提醒
+    Reminder::init();
+
     setupUI();
 
     // 创建提醒定时器（每10秒检查一次）
