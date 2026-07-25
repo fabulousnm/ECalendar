@@ -155,14 +155,24 @@ QLineEdit:disabled, QDateTimeEdit:disabled {
 
 /*日期时间编辑 */
 QDateTimeEdit::drop-down {
-    width: 24px;
+    width: 28px;
     border: none;
     border-left: 1px solid #E8ECF1;
+    background-color: #F5F7FA;
+}
+QDateTimeEdit::drop-down:hover {
+    background-color: #E8F0FE;
+}
+QDateTimeEdit::drop-down:pressed {
+    background-color: #D6E4FF;
 }
 QDateTimeEdit::down-arrow {
-    image: none;
     width: 0;
     height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid #888888;
+    margin-top: 2px;
 }
 
 /* 下拉框 */
@@ -170,9 +180,20 @@ QComboBox {
     min-width: 120px;
 }
 QComboBox::drop-down {
-    width: 24px;
+    width: 28px;
     border: none;
     border-left: 1px solid #E8ECF1;
+    background-color: #F5F7FA;
+}
+QComboBox::drop-down:hover {
+    background-color: #E8F0FE;
+}
+QComboBox::down-arrow {
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid #888888;
 }
 
 /* 主窗口表格  */
