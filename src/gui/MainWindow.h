@@ -61,6 +61,8 @@ private slots:
     void onTableDoubleClicked(int row, int column);
     /* 定时检查提醒 */
     void onCheckReminders();
+  void onRecordClicked();
+
     //自然语言解析接口
     void processRecording(const QString& wavPath);
 

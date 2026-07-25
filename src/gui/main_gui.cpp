@@ -11,7 +11,7 @@
 
 #include <QByteArray>
 #include <csignal>
-
+#include "audio/SpeechRecognizer.h"
 #include "gui/LoginDialog.h"
 #include "gui/MainWindow.h"
 #include "core/TaskManager.h"

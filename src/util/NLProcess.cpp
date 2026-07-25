@@ -13,7 +13,7 @@
  * 如果不满足上述条件，自动使用正则 fallback。
  */
 
-#include "util/NLProcessor.h"
+#include "util/NLProcess.h"
 
 #include <cstdlib>
 #include <cstring>

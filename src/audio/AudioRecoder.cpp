@@ -15,7 +15,7 @@
  *   sudo apt install sox          # rec
  */
 
-#include "audio/AudioRecorder.h"
+#include "audio/AudioRecoder.h"
 
 #include <cstdlib>
 #include <cstdio>

@@ -24,9 +24,9 @@
 #include <algorithm>
 //录音相关功能库
 #include "audio/Reminder.h"
-#include "audio/AudioRecorder.h"
+#include "audio/AudioRecoder.h"
 #include "audio/SpeechRecognizer.h"
-#include "util/NLProcessor.h"
+#include "util/NLProcess.h"
 
 MainWindow::MainWindow(TaskManager* manager, const QString& username, QWidget* parent)
     : QMainWindow(parent)
@@ -503,7 +503,7 @@ void MainWindow::onAiAddClicked() {
 
     // 使用 NLProcessor 解析（可能在后台线程执行，但这里简单起见直接调）
     // 注：parse() 内部会先尝试 DeepSeek API（网络调用可能慢），然后回退到正
-则
+
     std::string text = input.toStdString();
     ParsedTask parsed = NLProcessor::parse(text);
 

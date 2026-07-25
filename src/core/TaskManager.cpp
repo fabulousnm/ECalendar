@@ -36,40 +36,14 @@ bool TaskManager::isRemindTimeAfterStart(const std::string& remindTime,
     auto s = parseDateTime(startTime);
     if (r.size() != 5 || s.size() != 5) {
         // 解析失败
-        return remindTime > startTime;bool Storage::saveTasks(const std::string& filename, const std::vector<Task>& tasks) {
-    std::ofstream ofs(filename);
-    if (!ofs) return false;
-    ofs << "{\n  \"tasks\": [\n";
-    for (size_t i = 0; i < tasks.size(); i++) {
-        writeTask(ofs, tasks[i], 4);
-        if (i + 1 < tasks.size()) ofs << ",";
-        ofs << "\n";
-    }
-    ofs << "  ]\n}\n";
-    return true;
-}
-
-bool Storage::saveUsers(const std::string& filename, const std::vector<User>& users) {
-    std::ofstream ofs(filename);
-    if (!ofs) return false;
-    ofs << "{\n  \"users\": [\n";
-    for (size_t i = 0; i < users.size(); i++) {
-        writeUser(ofs, users[i], 4);
-        if (i + 1 < users.size()) ofs << ",";
-        ofs << "\n";
-    }
-    ofs << "  ]\n}\n";
-    return true;
-}
-
+        return remindTime > startTime;
     }
     for (int i = 0; i < 5; ++i) {
-        if (r[i] > s[i]) return true;   
-        if (r[i] < s[i]) return false;  
+        if (r[i] > s[i]) return true;   // 提醒时间偏大 → 晚于
+        if (r[i] < s[i]) return false;  // 提醒时间偏小 → 早于
     }
-    return false;  
+    return false;  // 全部相等 → 不晚于
 }
-
 
 // 用户管理
 
