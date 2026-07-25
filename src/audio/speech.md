@@ -34,3 +34,5 @@ Ecalender/
 │            └── ...
 └── CMakeLists.txt
 ```
+
+对于语音识别后的字符串解析，由于自然语言的多样性，只用正则化表达很难正确识别出内容，因此正则化表达作为备用方案，首要方案使用deepseek进行解析返回格式化内容，此处应该把deepseek api放在Ecalender主目录的.env环境变量中，格式为DEEPSEEK_API_KEY=sk-****************
