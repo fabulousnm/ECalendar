@@ -596,18 +596,34 @@ void MainWindow::onEditTask(int taskId) {
     if (dialog.exec() == QDialog::Accepted) {
         Task updatedTask = dialog.getTask();
 
-        // 删除原任务，添加新任务
+        // ✅ 先校验提醒时间（不晚于开始时间），通过才执行编辑
+        if (!updatedTask.remindTime.empty() &&
+            TaskManager::isRemindTimeAfterStart(updatedTask.remindTime, updatedTask.startTime)) {
+            QMessageBox::warning(this, "编辑失败",
+                "❌ 提醒时间不能晚于开始时间（包括年月日时分），请调整后重试。");
+            return;  // 保留原任务，不删除
+        }
+
+        // ✅ 先校验重名+同时间（排除自身），通过才执行编辑
+        bool hasDuplicate = false;
+        for (const auto& t : m_manager->getTasks()) {
+            if (t.id != taskId && t.name == updatedTask.name && t.startTime == updatedTask.startTime) {
+                hasDuplicate = true;
+                break;
+            }
+        }
+        if (hasDuplicate) {
+            QMessageBox::warning(this, "编辑失败",
+                "存在同名且同开始时间的任务，请修改后重试。");
+            return;  // 保留原任务，不删除
+        }
+
+        // 校验通过，执行编辑（删旧 + 添新）
         m_manager->deleteTask(taskId);
         int newId = m_manager->addTask(updatedTask);
         if (newId > 0) {
             saveData();
             refreshTable();
-        } else if (newId == -2) {
-            QMessageBox::warning(this, "编辑失败",
-                "❌ 提醒时间不能晚于开始时间（包括年月日时分），请调整后重试。");
-        } else {
-            QMessageBox::warning(this, "编辑失败",
-                "存在同名且同开始时间的任务，请修改后重试。");
         }
     }
 }
